@@ -1,4 +1,4 @@
 {
   "name": "model-trader",
-  "install": "pip install -e \".[all]\""
+  "install": "cd /agent/repos/model-trader\npip install -e \".[all]\""
 }
