@@ -46,6 +46,16 @@ It is not a strategy. It is the harness around one.
 
 - **`traders/`** — gitignored. Your trader projects live here.
 
+## Hermes multi-agent desk
+
+When this repo is checked out next to
+[hermes-multi-agent-workflow](https://github.com/Reckless2316/hermes-multi-agent-workflow),
+that project's Kanban desk uses these detectors, paper-trader filters, and
+TAKE/WAIT/SKIP statuses as the trading domain: an options-signal scout and a
+swing-trade scout, one human gate, then paper execution. See that repo's
+`docs/08-trading-domain.md`. This package stays the executor/scanner harness;
+Hermes stays the board.
+
 ## Quickstart
 
 ```bash
