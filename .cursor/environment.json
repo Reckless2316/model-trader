@@ -1,0 +1,4 @@
+{
+  "name": "model-trader",
+  "install": "pip install -e \".[all]\""
+}
