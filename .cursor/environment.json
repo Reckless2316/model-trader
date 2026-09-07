@@ -1,0 +1,4 @@
+{
+  "name": "model-trader",
+  "install": "cd /agent/repos/model-trader\npip install -e \".[all]\""
+}
