@@ -92,6 +92,16 @@ If you're a human (or an agent) trying to use this repo from cold:
 - `yt-dlp` (for the transcript pipeline)
 - `anthropic` + `ANTHROPIC_API_KEY` (for `extract_strategy.py` and the optional agent)
 
+## Development
+
+```bash
+pip install -e .
+python -m unittest discover -s tests -t .
+```
+
+`model_trader.data.StaticAdapter` serves candles from memory, so tests and
+offline backtests over saved data need no network.
+
 ## License
 
 MIT. See `LICENSE`.

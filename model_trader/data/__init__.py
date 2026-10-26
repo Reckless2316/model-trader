@@ -7,5 +7,6 @@ instance — they don't care where the data comes from.
 
 from .base import DataAdapter, Candle
 from .hyperliquid import HyperliquidAdapter
+from .static import StaticAdapter
 
-__all__ = ["DataAdapter", "Candle", "HyperliquidAdapter"]
+__all__ = ["DataAdapter", "Candle", "HyperliquidAdapter", "StaticAdapter"]
