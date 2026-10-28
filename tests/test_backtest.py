@@ -161,3 +161,27 @@ class ContractTests(unittest.TestCase):
 
         with self.assertRaises(AttributeError):
             run_backtest(Buggy, self.config, self.data)
+
+
+class UnknownTimeframeTests(unittest.TestCase):
+    def test_unlisted_timeframe_is_inferred_once_and_truncated(self):
+        import time
+
+        step = 120_000  # "2m" is not in the runner's table, so its length is inferred
+        bars = [candle(i * step, 100, 100.5, 99.5, 100) for i in range(20_000)]
+        seen: list[tuple[int, int]] = []
+
+        class Probe(ScannerBase):
+            def evaluate(self, symbol):  # pragma: no cover
+                return SetupResult(symbol=symbol)
+
+            def evaluate_at(self, symbol, hist, corr_hist, ts):
+                seen.append((ts, hist["2m"][-1]["timestamp"]))
+                return SetupResult(symbol=symbol)
+
+        start = time.perf_counter()
+        run_backtest(Probe, {"symbols": ["BTC"], "timeframes": ["2m"]}, StaticAdapter({"BTC": {"2m": bars}}), step_timeframe="2m", evaluate_every_n_bars=1000)
+        self.assertLess(time.perf_counter() - start, 5.0)  # quadratic inference took minutes here
+        self.assertTrue(seen)
+        for ts, newest_open in seen:
+            self.assertEqual(newest_open, ts)  # the step bar itself has closed; nothing later is visible

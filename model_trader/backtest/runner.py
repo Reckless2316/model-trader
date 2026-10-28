@@ -49,10 +49,10 @@ class _ClosedView:
 
     def __init__(self, hist: dict[str, list]):
         self.hist = hist
-        self.close_times = {
-            tf: [c["timestamp"] + _timeframe_ms(tf, candles) for c in candles]
-            for tf, candles in hist.items()
-        }
+        self.close_times: dict[str, list[int]] = {}
+        for tf, candles in hist.items():
+            length = _timeframe_ms(tf, candles) if candles else 0
+            self.close_times[tf] = [c["timestamp"] + length for c in candles]
 
     def at(self, now_ms: int) -> dict[str, list]:
         return {
