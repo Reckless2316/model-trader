@@ -29,6 +29,10 @@ that just calls `fetch_candles` with a computed limit. If your data source
 caps responses (most do), override `fetch_historical` to paginate — see
 `HyperliquidAdapter` for an example.
 
+For backtests over data you already saved (CSV, parquet, a database), load
+it into `StaticAdapter({symbol: {timeframe: [candles]}})` instead of writing
+an adapter.
+
 ## Minimal example: CCXT
 
 ```python

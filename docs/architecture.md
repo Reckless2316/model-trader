@@ -122,7 +122,7 @@ The backtest runner replaces step 2-5 of the loop with a historical walk:
 fetch full history once per symbol
 for ts in step every N minutes:
     for symbol in symbols:
-        hist = candles_truncated_at(ts)
+        hist = closed_candles_at(ts + step)   # no forming HTF candles
         result = scanner.evaluate_at(symbol, hist, corr_hist, ts)
         if result.status == TAKE: open paper trade
         check open trades against next candles
@@ -152,7 +152,7 @@ reading from passed-in history instead of calling the data adapter). See
   helps either.
 - **Backtest data caching.** Each backtest fetches fresh history from the
   data adapter. For Hyperliquid this is fine (free, fast); for other adapters
-  you may want to add a disk cache.
+  save the history once and replay it through `StaticAdapter`.
 - **Risk management beyond per-trade sizing.** No daily loss limits, no
   max-drawdown halt. Add these in your `main.py` if you need them.
 - **Multi-account.** One process, one journal.

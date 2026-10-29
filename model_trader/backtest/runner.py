@@ -14,11 +14,51 @@ See docs/backtest.md for details on implementing evaluate_at for your scanner.
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
 from typing import Callable, Any
 
 from ..gates import SetupStatus, SetupResult
+
+
+_TF_MS = {
+    "1m": 60_000, "3m": 180_000, "5m": 300_000, "15m": 900_000,
+    "30m": 1_800_000, "1h": 3_600_000, "2h": 7_200_000, "4h": 14_400_000,
+    "8h": 28_800_000, "12h": 43_200_000, "1d": 86_400_000,
+    "3d": 259_200_000, "1w": 604_800_000,
+}
+
+
+def _timeframe_ms(timeframe: str, candles: list) -> int:
+    """Known timeframe length, else the smallest spacing seen in the data."""
+    if timeframe in _TF_MS:
+        return _TF_MS[timeframe]
+    gaps = [b["timestamp"] - a["timestamp"] for a, b in zip(candles, candles[1:]) if b["timestamp"] > a["timestamp"]]
+    if not gaps:
+        raise ValueError(f"cannot infer candle length for timeframe {timeframe!r}")
+    return min(gaps)
+
+
+class _ClosedView:
+    """Per-timeframe slices of history containing only candles closed by a time.
+
+    Candle timestamps are *open* times, so a 4h candle that opened before the
+    decision time is still forming and must not be visible: its high/low/close
+    are in the future. A candle is visible iff open_time + length <= now.
+    """
+
+    def __init__(self, hist: dict[str, list]):
+        self.hist = hist
+        self.close_times: dict[str, list[int]] = {}
+        for tf, candles in hist.items():
+            length = _timeframe_ms(tf, candles) if candles else 0
+            self.close_times[tf] = [c["timestamp"] + length for c in candles]
+
+    def at(self, now_ms: int) -> dict[str, list]:
+        return {
+            tf: candles[: bisect_right(self.close_times[tf], now_ms)]
+            for tf, candles in self.hist.items()
+        }
 
 
 @dataclass
@@ -46,8 +86,11 @@ def run_backtest(
     """Replay history and simulate trades.
 
     Args:
-        scanner_factory: Callable returning a scanner with an `evaluate_at(symbol, data, step_ts)` method.
-            The scanner should accept pre-fetched historical data and a "current" timestamp.
+        scanner_factory: Callable returning a scanner with an
+            `evaluate_at(symbol, hist, corr_hist, ts)` method. `hist`/`corr_hist`
+            contain only candles that had closed by the end of step bar `ts`
+            (no lookahead); entries are assumed at that bar's close and exits
+            are checked from the next bar.
         config: Config dict with symbols, timeframes, etc.
         data_adapter: DataAdapter for fetching historical candles.
         days: How many days of history to test.
@@ -59,6 +102,11 @@ def run_backtest(
         dict with per-symbol breakdown, overall metrics, and trade list.
     """
     scanner = scanner_factory(config, data_adapter)
+    if not callable(getattr(scanner, "evaluate_at", None)):
+        raise RuntimeError(
+            "Your scanner must implement evaluate_at(symbol, hist, corr_hist, ts) "
+            "to support backtesting. See docs/backtest.md."
+        )
     all_trades: list[BacktestTrade] = []
     per_symbol: dict[str, dict] = {}
 
@@ -86,6 +134,9 @@ def run_backtest(
         if not step_candles:
             print(f"  [{symbol}] no {step_timeframe} data, skipping")
             continue
+        step_ms = _timeframe_ms(step_timeframe, step_candles)
+        hist_view = _ClosedView(hist)
+        corr_view = _ClosedView(corr_hist)
 
         trades_for_symbol: list[BacktestTrade] = []
         open_trade: BacktestTrade | None = None
@@ -142,16 +193,17 @@ def run_backtest(
             if i % evaluate_every_n_bars != 0:
                 continue
 
-            # Evaluate the scanner at this point in time
-            try:
-                result: SetupResult = scanner.evaluate_at(symbol, hist, corr_hist, ts)
-            except AttributeError:
-                raise RuntimeError(
-                    "Your scanner must implement evaluate_at(symbol, hist, corr_hist, ts) "
-                    "to support backtesting. See docs/backtest.md."
-                )
+            # Evaluate at the close of step bar i, seeing only closed candles.
+            decision_ms = ts + step_ms
+            result: SetupResult = scanner.evaluate_at(
+                symbol, hist_view.at(decision_ms), corr_view.at(decision_ms), ts
+            )
 
-            if result.status == SetupStatus.TAKE and result.entry and result.stop:
+            if (
+                result.status == SetupStatus.TAKE
+                and result.direction in ("long", "short")
+                and None not in (result.entry, result.stop, result.target)
+            ):
                 open_trade = BacktestTrade(
                     timestamp=ts,
                     symbol=symbol,

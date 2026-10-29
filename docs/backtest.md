@@ -19,8 +19,11 @@ def evaluate_at(self, symbol: str, hist: dict, corr_hist: dict, ts: int) -> Setu
 Arguments:
 
 - `symbol` — the symbol being evaluated
-- `hist` — `{timeframe: list[Candle]}` for `symbol`. Already truncated to
-  candles at-or-before `ts` by the runner — you can use the lists as-is.
+- `hist` — `{timeframe: list[Candle]}` for `symbol`. Already truncated by the
+  runner to candles that had **closed** by the end of the step bar at `ts`
+  (open time + candle length <= `ts` + step length). A 4h candle that is still
+  forming is not included, because its high/low/close are in the future. You
+  can use the lists as-is; `hist[tf][-1]` is the latest closed candle.
 - `corr_hist` — same shape, for the correlation symbol if any (used for SMT)
 - `ts` — current timestamp in milliseconds
 
@@ -104,8 +107,10 @@ For each symbol:
 1. Fetch full history for every timeframe in the config
 2. Walk `step_timeframe` (default 5m) bar by bar starting at index 200
 3. If a trade is open: check the current bar's high/low against SL/TP
-4. If no trade open and not in cooldown: call `evaluate_at(...)`
-5. If `TAKE`: open a trade at the result's entry/stop/target
+4. If no trade open and not in cooldown: call `evaluate_at(...)` at the close
+   of the current bar, with every timeframe truncated to closed candles
+5. If `TAKE` (with direction, entry, stop and target all set): open a trade at
+   the result's entry/stop/target; exits are checked from the next bar
 6. After a trade closes: skip `cooldown_bars` (default 6) before evaluating again
 
 The cooldown is a coarse anti-thrash mechanism — the live system uses smarter
@@ -138,8 +143,11 @@ A few things to look at, in order of importance:
 ## Common pitfalls
 
 - **Lookahead bias.** If `evaluate_at` peeks at candles after `ts`, your
-  results are fake. The runner already truncates `hist` for you, but if
-  you do anything like `data["1m"][i+1]` you'll leak. Default to working
+  results are fake. The runner truncates `hist` and `corr_hist` to closed
+  candles for you (versions before this fix passed the full history, so
+  backtests run on them overstated results and should be re-run), but if
+  you cache data on the scanner or fetch from the adapter inside
+  `evaluate_at` you can still leak. Default to working
   with `data["1m"][-1]` (the most recent allowed candle) and slicing
   backward from there.
 
